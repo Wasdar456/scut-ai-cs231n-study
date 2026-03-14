@@ -564,63 +564,132 @@ def dropout_backward(dout, cache):
 
 
 def conv_forward_naive(x, w, b, conv_param):
-    """A naive implementation of the forward pass for a convolutional layer.
+    """卷积层前向传播的朴素实现。
 
-    The input consists of N data points, each with C channels, height H and
-    width W. We convolve each input with F different filters, where each filter
-    spans all C channels and has height HH and width WW.
+    输入包含N个数据样本，每个样本有C个通道、高度H和宽度W。
+    我们用F个不同的滤波器对每个输入进行卷积，其中每个滤波器
+    覆盖所有C个通道，且自身的高度为HH、宽度为WW。
 
-    Input:
-    - x: Input data of shape (N, C, H, W)
-    - w: Filter weights of shape (F, C, HH, WW)
-    - b: Biases, of shape (F,)
-    - conv_param: A dictionary with the following keys:
-      - 'stride': The number of pixels between adjacent receptive fields in the
-        horizontal and vertical directions.
-      - 'pad': The number of pixels that will be used to zero-pad the input.
+    输入参数：
+    - x: 输入数据，形状为 (N, C, H, W)
+    - w: 滤波器权重，形状为 (F, C, HH, WW)
+    - b: 偏置项，形状为 (F,)
+    - conv_param: 包含以下键的字典：
+      - 'stride': 水平和垂直方向上相邻感受野之间的像素间隔数。
+      - 'pad': 用于对输入进行零填充的像素数量。
 
-    During padding, 'pad' zeros should be placed symmetrically (i.e equally on both sides)
-    along the height and width axes of the input. Be careful not to modfiy the original
-    input x directly.
+    填充时，应在输入的高度和宽度维度上对称地（即两侧均等）
+    填充'pad'个零。注意不要直接修改原始输入x。
 
-    Returns a tuple of:
-    - out: Output data, of shape (N, F, H', W') where H' and W' are given by
+    返回值为一个元组：
+    - out: 输出数据，形状为 (N, F, H', W')，其中H'和W'的计算公式为：
       H' = 1 + (H + 2 * pad - HH) / stride
       W' = 1 + (W + 2 * pad - WW) / stride
-    - cache: (x, w, b, conv_param)
+    - cache: 缓存数据，包含 (x, w, b, conv_param)
     """
     out = None
     ###########################################################################
-    # TODO: Implement the convolutional forward pass.                         #
-    # Hint: you can use the function np.pad for padding.                      #
+    # 任务：实现卷积层的前向传播。                                            #
+    # 提示：可以使用np.pad函数来完成填充操作。                                #
     ###########################################################################
-    # 
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape  # 滤波器：(滤波器数量, _, 滤波器高度, 滤波器宽度)
+    stride = conv_param['stride']  # 步长
+    pad = conv_param['pad']  # 填充数
+    # 步骤2：对输入x进行零填充 (注意不要修改原x，存在x_pad里)
+    # pad_width 的格式：((N前填, N后填), (C前填, C后填), (H前填, H后填), (W前填, W后填))
+    x_pad = np.pad(x, pad_width=((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant', constant_values=0)
+    # 步骤3：计算输出特征图的尺寸并初始化输出数组
+    H_out = 1 + (H + 2 * pad - HH) // stride
+    W_out = 1 + (W + 2 * pad - WW) // stride
+    out = np.zeros((N, F, H_out, W_out)) # 初始化输出全为0
+    # 步骤4：朴素卷积计算 (4层循环：遍历样本、遍历滤波器、遍历输出高度、遍历输出宽度)
+    for i in range(N):  # 遍历第 i 个样本
+        for f in range(F):  # 遍历第 f 个滤波器
+            for h_out in range(H_out):  # 遍历输出特征图的第 h_out 行
+                for w_out in range(W_out):  # 遍历输出特征图的第 w_out 列
+
+                    # 计算当前滤波器在输入(x_pad)上的感受野区域坐标
+                    h_start = h_out * stride
+                    h_end = h_start + HH
+                    w_start = w_out * stride
+                    w_end = w_start + WW
+
+                    # 取出输入中对应的那个小窗口 (区域)
+                    # 维度是 (C, HH, WW)
+                    input_region = x_pad[i, :, h_start:h_end, w_start:w_end]
+
+                    # 执行卷积核心操作：对应元素相乘 -> 求和 -> 加上偏置
+                    # w[f] 的维度是 (C, HH, WW)，b[f] 是一个标量
+                    out[i, f, h_out, w_out] = np.sum(input_region * w[f]) + b[f]
     ###########################################################################
-    #                             END OF YOUR CODE                            #
+    #                          代码编写结束                                  #
     ###########################################################################
     cache = (x, w, b, conv_param)
     return out, cache
 
 
 def conv_backward_naive(dout, cache):
-    """A naive implementation of the backward pass for a convolutional layer.
+    """卷积层反向传播的朴素实现。
 
-    Inputs:
-    - dout: Upstream derivatives.
-    - cache: A tuple of (x, w, b, conv_param) as in conv_forward_naive
+    输入参数：
+    - dout: 上游传来的梯度（也就是损失函数对输出 out 的梯度）。
+    - cache: 一个元组，包含前向传播时存下来的 (x, w, b, conv_param)。
 
-    Returns a tuple of:
-    - dx: Gradient with respect to x
-    - dw: Gradient with respect to w
-    - db: Gradient with respect to b
+    返回值为一个元组：
+    - dx: 损失函数对输入 x 的梯度。
+    - dw: 损失函数对滤波器权重 w 的梯度。
+    - db: 损失函数对偏置 b 的梯度。
     """
     dx, dw, db = None, None, None
     ###########################################################################
-    # TODO: Implement the convolutional backward pass.                        #
+    # 任务：实现卷积层的反向传播。                                              #
     ###########################################################################
-    # 
+    # 步骤1：取出数据并初始化
+    x, w, b, conv_param = cache
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    stride = conv_param['stride']
+    pad = conv_param['pad']
+
+    H_out = 1 + (H + 2 * pad - HH) // stride
+    W_out = 1 + (W + 2 * pad - WW) // stride
+
+    dx = np.zeros_like(x)
+    dw = np.zeros_like(w)
+    db = np.zeros_like(b)
+
+    x_pad = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+    dx_pad = np.pad(dx, ((0, 0), (0, 0), (pad, pad), (pad, pad)), mode='constant')
+
+    # 步骤2：计算 db
+    for f in range(F):
+        db[f] = np.sum(dout[:, f, :, :])
+
+    # 步骤3 & 4：计算 dw 和 dx (放在同一个循环里效率更高)
+    for i in range(N):
+        for f in range(F):
+            for h_out in range(H_out):
+                for w_out in range(W_out):
+                    h1 = h_out * stride
+                    h2 = h1 + HH
+                    w1 = w_out * stride
+                    w2 = w1 + WW
+
+                    window = x_pad[i, :, h1:h2, w1:w2]
+
+                    # 累加 dw
+                    dw[f, :, :, :] += dout[i, f, h_out, w_out] * window
+                    # 累加 dx_pad
+                    dx_pad[i, :, h1:h2, w1:w2] += dout[i, f, h_out, w_out] * w[f, :, :, :]
+
+    # 步骤5：去掉 padding
+    dx = dx_pad[:, :, pad:H + pad, pad:W + pad]
+
+
+
     ###########################################################################
-    #                             END OF YOUR CODE                            #
+    #                          代码编写结束                                  #
     ###########################################################################
     return dx, dw, db
 
